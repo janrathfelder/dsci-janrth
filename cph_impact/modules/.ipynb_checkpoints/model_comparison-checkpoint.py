@@ -384,7 +384,7 @@ class ModelComparison(object):
                           constant=0,
                           area_dummy=0):
         
-        cl = ols_assumptions_check.ols_check(area, date_column)
+        cl = modules.ols_assumptions_check.ols_check(area, date_column)
     
         mdb = df
         country = country
@@ -494,7 +494,7 @@ class ModelComparison(object):
 
             if show_classic_model_diagnostics!=0:
                 if d[1]==dates_to_loop[-1][1]:
-                    cl.show_all_classic_diagnostic_plots(dfx, dfx.residual, dfx.pred, cols_used)
+                    cl.show_all_classic_diagnostic_plots(dfx, dfx.residual, dfx.pred, cols_used, dfx[target])
 
             if show_additional_model_diagnostics!=0:
                 if d[1]==dates_to_loop[-1][1]:

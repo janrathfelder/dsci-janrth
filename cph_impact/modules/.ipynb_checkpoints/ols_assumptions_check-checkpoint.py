@@ -479,6 +479,7 @@ class ols_check(object):
             self.residual_plot(fittedvalues,residuals,ax=ax[0,0])
             self.qq_plot(df,features,residuals,ax=ax[0,1])
             self.scale_location_plot(df,features,residuals,fittedvalues,ax=ax[1,0])
+            #self.histogram_residuals(residuals, ax=ax[0,0])
             self.leverage_plot(df, features, residuals, fittedvalues, y_true, ax=ax[1,1])
             plt.show()
 
