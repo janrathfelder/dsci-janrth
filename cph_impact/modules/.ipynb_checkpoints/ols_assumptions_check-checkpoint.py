@@ -9,8 +9,10 @@ import scipy.stats
 from statsmodels.stats.diagnostic import het_white, het_breuschpagan
 from statsmodels.compat import lzip
 from statsmodels.stats.stattools import durbin_watson
+import matplotlib 
 
 from typing import List
+#from io import IOBytestream
 
 
 class ols_check(object):
@@ -20,19 +22,23 @@ class ols_check(object):
     '''
     
     def __init__(self,
-                 grouping: str,
-                 time_window: str):
-        self.grouping = grouping
-        self.time_window = time_window
+                 y_true: pd.Series,
+                 y_pred: pd.Series,
+                 features: List[str],
+                 ):
+        self.y_true = y_true
+        self.y_pred = y_pred
+        self.features = features
+        self.residuals = y_true - y_pred
         
     def __cooks_dist_line(self,
                           factor: float,
-                          features: List[str],
+                          #features: List[str],
                           leverage: pd.Series) -> pd.Series:
         """
         Helper function for plotting Cook's distance curves
         """
-        n = len(features)
+        n = len(self.features)
         formula = lambda x: np.sqrt((factor * n * (1 - x)) / x)
         x = np.linspace(0.001, max(leverage), 50)
         y = formula(x)
@@ -40,7 +46,6 @@ class ols_check(object):
     
     def __cooks_distance(self,
                          leverage: pd.Series,
-                         features: List[str],
                          residuals: pd.Series,
                          fittedvalues: pd.Series,
                          y_true: pd.Series) -> pd.Series:
@@ -116,6 +121,9 @@ class ols_check(object):
         for between all columns in the specified df.
         Outputs a filtered df with values>=5, which is an
         indication of strong multicollinearity.
+        
+        The input params are defined as follows:
+            :param df_vif: the input dataframe, which contains all features used in the regression
         '''
         df_vif = df_vif.dropna()
         df_vif = add_constant(df_vif)
@@ -127,11 +135,15 @@ class ols_check(object):
         return vif.sort_values('vif')
     
     def histogram_residuals(self,
-                           residuals,
-                           ax=None):
+                           residuals: pd.Series,
+                           ax=None) -> matplotlib.axis.Axis:
+    #IOBytestream:
         '''
         Plots a histogram of residuals with
         +/- 1 and 2 standard deviations
+        
+        The input params are defined as follows:
+            :param residuals: residuals as the difference between true and prediction
         '''
         if ax is None:
             fig, ax = plt.subplots()
@@ -141,8 +153,6 @@ class ols_check(object):
         sns.histplot(residuals, ax=ax)
         ax.set_title('Residuals', fontweight="bold")
         return ax
-    
-    
     
     def homoscedasticity_test_breusch_pagan(self,
                                             df,
@@ -156,14 +166,17 @@ class ols_check(object):
         .. math::
             u^2 = a_{0} + a_{1}*x_{1} + \cdots + a_{k}*x_{k} + v
             H0: a_{1} + \cdots + a_{k} = 0
+        
+        The input params are defined as follows:
+            :param df: residuals as the difference between true and prediction
         '''
         names = ['Lagrange multiplier statistic', 'p-value',
             'f-value', 'f p-value']
 
         # Run Breusch Pagan test:
         test = het_breuschpagan(df.residual, 
-                                   df[features])
-        #print results
+                                df[features])
+
         return print(lzip(names, test))
         
     def homoscedasticity_test_white(self,
@@ -189,48 +202,7 @@ class ols_check(object):
         labels = ['LM-Stat', 'LM p-val', 'F-Stat', 'F p-val'] 
         #print results
         return print(dict(zip(labels, white_test_results)))
-    
-    def serial_correlation_check(self, 
-                                 df,
-                                 full):
-        '''
-        The test statistic is approximately equal to 2*(1-r) 
-        where r is the sample autocorrelation of the residuals. 
-        Thus, for r == 0, indicating no serial correlation, 
-        the test statistic equals 2. This statistic will always 
-        be between 0 and 4. The closer to 0 the statistic, the 
-        more evidence for positive serial correlation. The closer 
-        to 4, the more evidence for negative serial correlation.
-        Values around 2 indicate to systematic auto-correlation
-        problem.
-        '''
-        #perform Durbin-Watson test
-        if full==0:
-            array_temp = df.groupby(self.time_window)['residual'].mean().values
-            db_result = durbin_watson(array_temp)
-        else:
-            db_result = []
-            for i in df[self.grouping].unique():
-                db_result.append(durbin_watson(df[df[self.grouping]==i
-                                                 ].groupby(self.time_window)['residual'].mean().values))
-        return db_result
-    
-    def plot_serial_correlation_per_group(self,
-                                         df,
-                                         ax=None):
-        '''
-        Plots the Durbin Watson values for a number
-        of groups calculated by the function
-        serial_correlation_check.
-        '''
-        corr_values = self.serial_correlation_check(df,1)
-        if ax is None:
-            fig, ax = plt.subplots()
 
-        ax.plot(corr_values)
-        ax.axhline(2, color='red', ls='--', lw=.5)
-        ax.set_title('Durbin Watson value per group', fontweight="bold")
-        return ax
     
     def residual_plot(self,
                       fittedvalues,
@@ -401,71 +373,6 @@ class ols_check(object):
         ax.legend(loc='upper right')
         return ax
     
-    def residual_over_time_with_error(self,
-                                      df,
-                                      residuals,
-                                      ax=None):
-        '''
-        Plots aggregated residuals over time with
-        error bars for 95% CI.
-        '''
-        
-        
-        cols_to_check = df.columns
-        search_word = 'residu'
-        x_value = [s for s in cols_to_check if search_word in s][0]
-        
-        if ax is None:
-            fig, ax = plt.subplots()
-        sns.lineplot(
-                        data=df, 
-                        x=self.time_window, 
-                        y=x_value,  
-                        err_style="bars", 
-                        ci=95,
-                        ax=ax)
-        ax.set_title('Residuals over time', fontweight="bold")
-        return ax
-    
-    def residual_over_time_with_error_n_groups(self,
-                                               df, 
-                                               grouping, 
-                                               n_groups,
-                                               ax=None):
-        '''
-        Plots the monthly residual for the groups
-        specified. One can either specify the number
-        of random choices from the group population
-        or can return the plot for all available
-        groups.
-        '''
-        if ax is None:
-            fig, ax = plt.subplots()
-            
-        if n_groups == 'all':
-            sns.lineplot(
-                        data=df, 
-                        x=self.time_window, 
-                        y="residual", 
-                        hue=grouping, 
-                        err_style="bars", 
-                        ci=95,
-                        ax=ax)
-            ax.set_title('Residuals over time for group', fontweight="bold")
-        else:
-            # picks n random groups and plots monthly residuals with error
-            random_groups = np.random.choice(df[grouping].unique(), n_groups)
-            sns.lineplot(
-                        data=df[df[grouping].isin(random_groups)], 
-                        x=self.time_window, 
-                        y="residual", 
-                        hue=grouping, 
-                        err_style="bars", 
-                        ci=95,
-                        ax=ax)
-            ax.set_title('Residuals over time for group', fontweight="bold")
-        return ax
-    
     def show_all_classic_diagnostic_plots(self, 
                        df,
                        residuals,
@@ -479,25 +386,8 @@ class ols_check(object):
             self.residual_plot(fittedvalues,residuals,ax=ax[0,0])
             self.qq_plot(df,features,residuals,ax=ax[0,1])
             self.scale_location_plot(df,features,residuals,fittedvalues,ax=ax[1,0])
-            #self.histogram_residuals(residuals, ax=ax[0,0])
             self.leverage_plot(df, features, residuals, fittedvalues, y_true, ax=ax[1,1])
             plt.show()
 
         display(self.vif_test(df[features]))
-        return fig, ax
-    
-    def show_additional_residual_plots(self, 
-                       df,
-                       residuals,
-                       grouping,
-                       n_groups,
-                       plot_context='seaborn-paper'):
-        # print(plt.style.available)
-        with plt.style.context(plot_context):
-            fig, ax = plt.subplots(3, figsize=(12,10))
-            self.plot_serial_correlation_per_group(df, ax=ax[0])
-            self.residual_over_time_with_error(df, residuals, ax=ax[1])
-            self.residual_over_time_with_error_n_groups(df, grouping, n_groups, ax=ax[2])
-            plt.show()
-        #self.vif_table()
         return fig, ax
